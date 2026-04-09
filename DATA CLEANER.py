@@ -78,17 +78,24 @@ info = """2026-04-05T08:48:34.543+02:00;Wager;-21;648281706
 2026-03-28T22:46:28.637+02:00;Payout;270.81;627776589
 2026-03-28T22:46:28.633+02:00;Win Boost Cash Payout;5.42;627776589"""
 
+import pandas as pd
+df = pd.DataFrame(records)
 def parse_to_list(info: str) -> list:
     return [line.strip() for line in info.strip().splitlines() if line.strip()]
 
 info = parse_to_list(info)
+info = info[1:]  # skip the header row
 
 deposits = 0
 wagers = 0
 wins = 0
 
+deposits_sum = 0
+wagers_sum = 0
+wins_sum = 0
 
-def cleaning(transaction, deposits, wagers, wins):
+
+def cleaning(transaction, deposits, deposits_sum, wagers, wagers_sum, wins, wins_sum):
     segments = transaction.split(";")
 
     date = segments[0]
@@ -99,38 +106,58 @@ def cleaning(transaction, deposits, wagers, wins):
     print("Bet Type:", action)
 
     amount = segments[2]
+    signed_amount = float(amount) # keep the sign intact
+
+    record = {
+    "date": date,
+    "type": action,
+    "amount": signed_amount
+    }
 
     if action == "Rewards Cash Award" or action == "Win Boost Cash Payout" or action == "Payout":
         print("Amount Won:", amount)
+        wins_sum += float(amount)
         wins += 1
     elif "-" in str(amount):
         clean_amount = amount.replace("-", "")
         print(f"YOU LOST: {clean_amount}")
         wagers += 1
+        wagers_sum += float(clean_amount)
     else:
         print("Amount Deposited:", amount)
         deposits += 1
+        deposits_sum += float(amount)
 
     code = segments[3]
     print("Bet Code:", code)
 
-    return deposits, wagers, wins  # <-- this was missing
+    return record, deposits, deposits_sum, wagers, wagers_sum, wins, wins_sum  # <-- this was missing
     
 
-def info_len(info, deposits, wagers, wins):
+def info_len(info, deposits, deposits_sum, wagers, wagers_sum, wins, wins_sum):
     info_len = len(info)
     print("Number of Transaction Entries: ",info_len)
     print("<---------------TRANSACTION SUMMARIES----------->")
     transaction = []
+    records = []
     for i in range(info_len):
         transaction = info[i]
         print(f"<<<<<<<TRANSACTION INFO {i+1}>>>>>>>>")
-        deposits, wagers, wins = cleaning(transaction, deposits, wagers, wins)
+        record, deposits, deposits_sum, wagers, wagers_sum,  wins, wins_sum = cleaning(transaction, deposits, deposits_sum, wagers, wagers_sum, wins, wins_sum)
+        records.append(record)
 
     print(f"\nDeposits: {deposits} | Wagers: {wagers} | Wins: {wins}")
+    print(f"\nTotal Deposited Amount: {round(deposits_sum,2)} | Total Wagered Amount: {round(wagers_sum,2)} | Total Amount Won: {round(wins_sum,2)}")
         
         #print(info[i])
         
-info_len(info, deposits, wagers, wins)
+info_len(info, deposits, deposits_sum, wagers, wagers_sum, wins, wins_sum)
+
+
+
+
+    
+
+    
 
 
