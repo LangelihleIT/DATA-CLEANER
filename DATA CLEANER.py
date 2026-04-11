@@ -30,8 +30,13 @@ info = """Date;Type;Amount;Transaction ID
 2026-04-03T12:46:48.02+02:00;Wager;-15;641851791
 2026-04-03T12:29:31.803+02:00;Blu Voucher Deposit;15;Blu Voucher Deposit"""
 
+
 import pandas as pd
 import matplotlib.pyplot as plt
+import sqlite3 
+import os 
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 
 def parse_to_list(info: str) -> list:
     return [line.strip() for line in info.strip().splitlines() if line.strip()]
@@ -61,13 +66,14 @@ def cleaning(transaction, deposits, deposits_sum, wagers, wagers_sum, wins, wins
     amount = segments[2]
     signed_amount = float(amount) # keep the sign intact
 
+    #RECORD --> PANDAS
     record = {
     "date": date,
     "type": action,
     "amount": signed_amount
     }
 
-    if action == "Rewards Cash Award" or action == "Win Boost Cash Payout" or action == "Payout":
+    if action == "Rewards Cash Award" or action == "Win Boost Cash Payout" or "Payout" in action:
         print("Amount Won:", amount)
         wins_sum += float(amount)
         wins += 1
@@ -101,29 +107,73 @@ def info_len(info, deposits, deposits_sum, wagers, wagers_sum, wins, wins_sum):
     
     net_profit = round(wins_sum + deposits_sum - wagers_sum, 2)
     
+    
 
     print(f"\nDeposits: {deposits} | Wagers: {wagers} | Wins: {wins}")
     print(f"\nTotal Deposited Amount: {round(deposits_sum,2)} | Total Wagered Amount: {round(wagers_sum,2)} | Total Amount Won: {round(wins_sum,2)}")
     print(f"Net Profit: {net_profit}")
+    
+    betting_pnl = round(wins_sum - wagers_sum, 2)
+    print(f"\nBetting P&L (DEPOSITS EXCLUDED): R{betting_pnl}")
+    print(f"Deposit Reliance: R{round(deposits_sum,2)}")
+    
+    if betting_pnl >= 0:
+        print("Verdict: GOOD NEWS!")
+        print("You are Profitable")
+    else:
+        print(f"Verdict: Without Cash Injections, TOTAL LOSSES = R{abs(betting_pnl)}")
         
+    #SQL CODE
     df = pd.DataFrame(records)
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date").reset_index(drop=True)
+    conn = sqlite3.connect("transactions.db")
+    df.to_sql("transactions", conn, if_exists="replace", index=False)
+    print("Database Connection: Succesful. Data Writtent to -> transactions.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM transactions LIMIT 2")
+    rows = cursor.fetchall()
+    print("\n<--- DATABASE VERIFICATION --->")
+    for row in rows:
+        print(row)
+    conn.close()
     df["bankroll"] = df["amount"].cumsum()
     print(df)
     
+    betting_df = df[(df["type"] != "OTT Voucher Deposit") & (df["type"] != "Blu Voucher Deposit")].copy()
+    betting_df["betting_pnl"] = betting_df["amount"].cumsum()
+    
+    print(betting_df)
+    
     #Plotting & Visualisation 
     plt.figure(figsize=(12,5))
-    plt.plot(df["date"], df["bankroll"], color="green", linewidth=1.5)
+    plt.plot(df["date"], df["bankroll"], color="green", linewidth=1.5, label="Account Balance")
+    plt.plot(betting_df["date"], betting_df["betting_pnl"], color="red", linewidth=1.5, label="Betting P&L (Deposits Excluded)")
+    plt.axhline(y=0, color="grey", linestyle="--", linewidth=1)
     plt.title("Bankroll Over Time")
     plt.xlabel("Date --> Time")
     plt.ylabel("Balance (R) --> Bankroll")
+    plt.legend()
     plt.tight_layout()
     plt.show()
     
+    
+def query(sql):
+    conn = sqlite3.connect("transactions.db")
+    cursor = conn.cursor()
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
-        #print(info[i])
-        
+# these live outside the function, at the bottom of the file
 info_len(info, deposits, deposits_sum, wagers, wagers_sum, wins, wins_sum)
 
+print("\n<--- WAGERS --->")
+print(query("SELECT * FROM transactions WHERE type = 'Wager'"))
 
+print("\n<--- TOTAL WAGERED --->")
+print(query("SELECT SUM(amount) FROM transactions WHERE amount < 0"))
+
+print("\n<--- BIGGEST SINGLE LOSS --->")
+print(query("SELECT MIN(amount) FROM transactions"))
