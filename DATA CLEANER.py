@@ -136,8 +136,21 @@ def info_len(info, deposits, deposits_sum, wagers, wagers_sum, wins, wins_sum):
     print("\n<--- DATABASE VERIFICATION --->")
     for row in rows:
         print(row)
+        
     conn.close()
+    
     df["bankroll"] = df["amount"].cumsum()
+    df["hour"] = df["date"].dt.hour
+    df["day"] = df["date"].dt.day_name
+    df["month"] = df["date"].dt.month
+    
+    wager_df = df[df["type"] == "Wager"].copy()
+    
+    print("\n<--- LOSSES BY HOUR --->")
+    print(wager_df.groupby("hour")["amount"].sum().sort_values())
+
+    print("\n<--- LOSSES BY DAY --->")
+    print(wager_df.groupby("day")["amount"].sum().sort_values())
     print(df)
     
     betting_df = df[(df["type"] != "OTT Voucher Deposit") & (df["type"] != "Blu Voucher Deposit")].copy()
