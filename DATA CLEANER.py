@@ -30,6 +30,7 @@ info = """Date;Type;Amount;Transaction ID
 2026-04-03T12:46:48.02+02:00;Wager;-15;641851791
 2026-04-03T12:29:31.803+02:00;Blu Voucher Deposit;15;Blu Voucher Deposit"""
 
+info = """ """
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -141,7 +142,7 @@ def info_len(info, deposits, deposits_sum, wagers, wagers_sum, wins, wins_sum):
     
     df["bankroll"] = df["amount"].cumsum()
     df["hour"] = df["date"].dt.hour
-    df["day"] = df["date"].dt.day_name
+    df["day"] = df["date"].dt.day_name()
     df["month"] = df["date"].dt.month
     
     wager_df = df[df["type"] == "Wager"].copy()
@@ -156,10 +157,37 @@ def info_len(info, deposits, deposits_sum, wagers, wagers_sum, wins, wins_sum):
     betting_df = df[(df["type"] != "OTT Voucher Deposit") & (df["type"] != "Blu Voucher Deposit")].copy()
     betting_df["betting_pnl"] = betting_df["amount"].cumsum()
     
+    # CHASING DETECTION
+    print("\n<--- CHASING DETECTION --->")
+    wager_df = df[df["type"] == "Wager"].copy()
+    wager_df["prev_amount"] = wager_df["amount"].shift(1)
+    wager_df["chasing"] = wager_df["amount"] <= wager_df["prev_amount"]
+    chasing_instances = wager_df[wager_df["chasing"] == True]
+    print(f"Chasing instances detected: {len(chasing_instances)}")
+    print(chasing_instances[["date", "amount", "prev_amount"]])
+    
+    # MAXIMUM DRAWDOWN
+    print("\n<--- MAXIMUM DRAWDOWN --->")
+    df["peak"] = df["bankroll"].cummax()
+    df["drawdown"] = df["bankroll"] - df["peak"]
+    max_drawdown = df["drawdown"].min()
+    print(f"Maximum Drawdown: R{round(abs(max_drawdown), 2)}")
+    
+    # STAKE SIZING ANALYSIS
+    print("\n<--- OVERBETTING INSTANCES --->")
+    
+    wager_df2 = df[df["type"] == "Wager"].copy()
+    wager_df2["bankroll_at_time"] = wager_df2["bankroll"].shift(1)
+    #wager_df2 = wager_df2[wager_df2["bankroll_at_time"] > 0]
+    wager_df2["stake_pct"] = (wager_df2["amount"].abs() / wager_df2["bankroll_at_time"].abs()) * 100
+    wager_df2 = wager_df2[wager_df2["bankroll_at_time"] > 10]
+    overbetting = wager_df2[wager_df2["stake_pct"] > 20]
+    print(f"Overbetting instances (>20% of bankroll): {len(overbetting)}")
+    print(overbetting[["date", "amount", "bankroll_at_time", "stake_pct"]].round(2))
     print(betting_df)
     
     #Plotting & Visualisation 
-    plt.figure(figsize=(12,5))
+    '''plt.figure(figsize=(12,5))
     plt.plot(df["date"], df["bankroll"], color="green", linewidth=1.5, label="Account Balance")
     plt.plot(betting_df["date"], betting_df["betting_pnl"], color="red", linewidth=1.5, label="Betting P&L (Deposits Excluded)")
     plt.axhline(y=0, color="grey", linestyle="--", linewidth=1)
@@ -167,6 +195,42 @@ def info_len(info, deposits, deposits_sum, wagers, wagers_sum, wins, wins_sum):
     plt.xlabel("Date --> Time")
     plt.ylabel("Balance (R) --> Bankroll")
     plt.legend()
+    plt.tight_layout()
+    plt.show()'''
+    
+        # PHASE 5 DASHBOARD
+    fig, axes = plt.subplots(2, 2, figsize=(14, 8))
+    fig.suptitle("Betting Behaviour Dashboard", fontsize=14)
+
+    # Panel 1 - Losses by hour
+    hour_losses = wager_df.groupby("hour")["amount"].sum().abs()
+    axes[0, 0].bar(hour_losses.index, hour_losses.values, color="red")
+    axes[0, 0].set_title("Losses by Hour")
+    axes[0, 0].set_xlabel("Hour")
+    axes[0, 0].set_ylabel("Amount Lost (R)")
+
+    # Panel 2 - Losses by day
+    day_losses = wager_df.groupby("day")["amount"].sum().abs()
+    axes[0, 1].bar(day_losses.index, day_losses.values, color="orange")
+    axes[0, 1].set_title("Losses by Day")
+    axes[0, 1].tick_params(axis="x", rotation=45)
+
+    # Panel 3 - Drawdown over time
+    axes[1, 0].plot(df["date"], df["drawdown"], color="red", linewidth=1.5)
+    axes[1, 0].axhline(y=0, color="grey", linestyle="--", linewidth=1)
+    axes[1, 0].set_title("Drawdown Over Time")
+    axes[1, 0].set_xlabel("Date")
+    axes[1, 0].set_ylabel("Drawdown (R)")
+    axes[1, 0].tick_params(axis="x", rotation=45)
+
+    # Panel 4 - Bankroll vs Betting P&L
+    axes[1, 1].plot(df["date"], df["bankroll"], color="green", linewidth=1.5, label="Bankroll")
+    axes[1, 1].plot(betting_df["date"], betting_df["betting_pnl"], color="red", linewidth=1.5, label="Betting P&L")
+    axes[1, 1].axhline(y=0, color="grey", linestyle="--", linewidth=1)
+    axes[1, 1].set_title("Bankroll vs Betting P&L")
+    axes[1, 1].legend()
+    axes[1, 1].tick_params(axis="x", rotation=45)
+
     plt.tight_layout()
     plt.show()
     
